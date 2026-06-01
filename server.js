@@ -11,12 +11,17 @@ app.use(express.static('public'));
 app.use(express.json());
 
 // ── Load API key ──────────────────────────────────────────
+// Always prefer environment variable (Render sets this directly)
 let ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
-try {
-  const env = fs.readFileSync('.env', 'utf8');
-  const m = env.match(/ANTHROPIC_API_KEY=(.+)/);
-  if (m) ANTHROPIC_API_KEY = m[1].trim();
-} catch (_) {}
+// Fallback: try reading .env file (for local development)
+if (!ANTHROPIC_API_KEY) {
+  try {
+    const env = fs.readFileSync('.env', 'utf8');
+    const m = env.match(/ANTHROPIC_API_KEY=(.+)/);
+    if (m) ANTHROPIC_API_KEY = m[1].trim();
+  } catch (_) {}
+}
+console.log('API Key check — length:', ANTHROPIC_API_KEY.length, '| starts with sk-ant:', ANTHROPIC_API_KEY.startsWith('sk-ant'));
 
 // ── In-memory game state ──────────────────────────────────
 const rooms = {};
@@ -285,7 +290,7 @@ io.on('connection', (socket) => {
       setTimeout(() => sendQuestion(code), 4000);
     } catch (err) {
       console.error('Question generation failed:', err.message);
-      io.to(code).emit('error', 'Failed to generate questions. Check your API key in .env');
+      const msg = err.message.includes('401') || err.message.includes('auth') ? 'Invalid API key — check Render environment variables.' : err.message.includes('credit') || err.message.includes('billing') || err.message.includes('quota') ? 'No Anthropic credits — add billing at console.anthropic.com' : err.message.includes('overload') ? 'Anthropic busy — try again in 30 seconds.' : 'Question generation failed: ' + err.message; io.to(code).emit('error', msg);
       room.state = 'lobby';
     }
   });
