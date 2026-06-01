@@ -212,7 +212,7 @@ socket.on('round2_question', ({ questionIndex, total, question, options, timeLef
 
   // Show timer + skip for host
   $('r2-controls').classList.remove('hidden');
-  $('skip-btn').classList.toggle('hidden', !state.isHost);
+  $('skip-btn').classList.remove('hidden'); // every player can skip in round2
 
   startRound2Timer(timeLeft);
 });
@@ -438,4 +438,17 @@ socket.on('disconnect', () => {
 
 socket.on('connect', () => {
   // Reassign socket.id tracking
+});
+
+// ── ROUND 2: Player exhausted all questions ───────────
+socket.on('round2_waiting', ({ message }) => {
+  $('question-text').textContent = message;
+  $('options-grid').innerHTML = '';
+  $('answer-feedback').classList.add('hidden');
+  $('r2-controls').classList.add('hidden');
+  // Show a waiting state on the question screen
+  const card = $('question-card');
+  card.style.textAlign = 'center';
+  card.style.padding = '2.5rem';
+  $('question-text').style.color = 'var(--text2)';
 });

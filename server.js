@@ -124,29 +124,83 @@ function sendQuestion(code) {
   });
 }
 
-function sendRound2Question(code) {
+function sendRound2Question(code, playerId) {
   const room = rooms[code];
   if (!room) return;
-  const qi = room.quiz.round2QIndex;
+  const player = room.players.find(p => p.id === playerId);
+  if (!player) return;
+
+  const qi = player.round2QIndex || 0;
   const q  = room.quiz.round2Questions[qi];
-  if (!q) { endRound2(code); return; }
-  io.to(code).emit('round2_question', {
+  const timeLeft = Math.max(0, 60 - Math.floor((Date.now() - room.quiz.round2Timer) / 1000));
+
+  if (!q || timeLeft <= 0) return; // no more questions or time up
+
+  // Send only to this specific player
+  io.to(playerId).emit('round2_question', {
     questionIndex: qi,
     total: room.quiz.round2Questions.length,
     question: q.question,
     options: q.options,
-    timeLeft: Math.max(0, 60 - Math.floor((Date.now() - room.quiz.round2Timer) / 1000)),
+    timeLeft,
   });
 }
 
-function revealAndAdvance(code, questionIndex) {
+// Send first round2 question to ALL players simultaneously
+function sendRound2QuestionToAll(code) {
   const room = rooms[code];
   if (!room) return;
+  room.players.forEach(p => {
+    p.round2QIndex = 0;
+    sendRound2Question(code, p.id);
+  });
+}
+
+function revealAndAdvance(code, questionIndex, playerId) {
+  const room = rooms[code];
+  if (!room) return;
+
+  if (room.state === 'round2') {
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return;
+    const qi  = player.round2QIndex || 0;
+    const q   = room.quiz.round2Questions[qi];
+    const key = 'round2_' + playerId + '_' + qi;
+    const ans = room.quiz.answered[key] || {};
+
+    // Send reveal only to this player
+    io.to(playerId).emit('question_reveal', {
+      questionIndex: qi,
+      correctAnswer: q.answer,
+      explanation:   q.explanation,
+      scores:        getScores(code),
+      firstCorrect:  ans.firstCorrect || null,
+      isRound2:      true,
+    });
+
+    // Also broadcast updated scores to everyone
+    io.to(code).emit('scores_update', getScores(code));
+
+    setTimeout(function() {
+      if (!rooms[code] || rooms[code].state !== 'round2') return;
+      const elapsed = Date.now() - room.quiz.round2Timer;
+      if (elapsed >= 60000) return; // timer ended, endRound2 already called
+      player.round2QIndex = (player.round2QIndex || 0) + 1;
+      if (player.round2QIndex >= room.quiz.round2Questions.length) {
+        // This player exhausted all questions — show waiting message
+        io.to(playerId).emit('round2_waiting', { message: 'You answered all questions! Wait for the round to end.' });
+      } else {
+        sendRound2Question(code, playerId);
+      }
+    }, 3000);
+    return;
+  }
+
   const questions = room.state === 'round1'
     ? room.quiz.round1Questions
     : room.quiz.round3Questions;
   const q   = questions[questionIndex];
-  const key = `${room.state}_${questionIndex}`;
+  const key = room.state + '_' + questionIndex;
   const ans = room.quiz.answered[key] || {};
   io.to(code).emit('question_reveal', {
     questionIndex,
@@ -155,7 +209,7 @@ function revealAndAdvance(code, questionIndex) {
     scores:        getScores(code),
     firstCorrect:  ans.firstCorrect || null,
   });
-  setTimeout(() => { room.quiz.currentQ++; sendQuestion(code); }, 4000);
+  setTimeout(function() { room.quiz.currentQ++; sendQuestion(code); }, 4000);
 }
 
 function endRound1(code) {
@@ -306,14 +360,23 @@ io.on('connection', (socket) => {
     else return;
 
     const q   = questions[questionIndex]; if (!q) return;
-    const key = `${room.state}_${questionIndex}`;
+
+    // Round 2: each player has their own key so they answer independently
+    const key = room.state === 'round2'
+      ? 'round2_' + socket.id + '_' + questionIndex
+      : room.state + '_' + questionIndex;
+
     if (!room.quiz.answered[key]) room.quiz.answered[key] = { firstCorrect: null, responders: [] };
     if (room.quiz.answered[key].responders.find(r => r.id === socket.id)) return;
 
     const isCorrect = answer === q.answer;
     const isFirst   = isCorrect && room.quiz.answered[key].firstCorrect === null;
     const base      = { easy:100, medium:200, hard:350, expert:500 }[room.difficulty] || 200;
-    const pts       = isCorrect ? (isFirst ? base : Math.floor(base / 2)) : 0;
+
+    // Round 2: full points for correct, 0 for wrong (no half points — independent flow)
+    const pts = room.state === 'round2'
+      ? (isCorrect ? base : 0)
+      : (isCorrect ? (isFirst ? base : Math.floor(base / 2)) : 0);
 
     player.score += pts;
     if (isFirst) room.quiz.answered[key].firstCorrect = { id: socket.id, name: player.name };
@@ -325,18 +388,34 @@ io.on('connection', (socket) => {
     });
     io.to(code).emit('scores_update', getScores(code));
 
-    if (room.quiz.answered[key].responders.length === room.players.length) {
-      revealAndAdvance(code, questionIndex);
+    if (room.state === 'round2') {
+      // Each player advances independently after answering (correct or wrong)
+      revealAndAdvance(code, questionIndex, socket.id);
+    } else {
+      // Round 1 and 3: advance when all players answered
+      if (room.quiz.answered[key].responders.length === room.players.length) {
+        revealAndAdvance(code, questionIndex);
+      }
     }
   });
 
   socket.on('round2_skip', ({ code }) => {
     const room = rooms[code];
     if (!room || room.state !== 'round2') return;
-    if (socket.id !== room.host) return;
-    room.quiz.round2QIndex++;
-    if (room.quiz.round2QIndex >= room.quiz.round2Questions.length) endRound2(code);
-    else sendRound2Question(code);
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    // Check time
+    const elapsed = Date.now() - room.quiz.round2Timer;
+    if (elapsed >= 60000) return;
+
+    // Move THIS player to next question
+    player.round2QIndex = (player.round2QIndex || 0) + 1;
+    if (player.round2QIndex >= room.quiz.round2Questions.length) {
+      io.to(socket.id).emit('round2_waiting', { message: 'You answered all questions! Wait for the round to end.' });
+    } else {
+      sendRound2Question(code, socket.id);
+    }
   });
 
   socket.on('select_topic', async ({ code, topic }) => {
@@ -347,9 +426,14 @@ io.on('connection', (socket) => {
     io.to(code).emit('game_loading', { message: `Loading ${topic} questions...` });
     try {
       const questions = await generateQuestions('topic', topic, room.difficulty, 15, room.usedQuestions);
+      // Cancel any previous round2 timeout
+      if (room.round2Timeout) { clearTimeout(room.round2Timeout); room.round2Timeout = null; }
       room.quiz.round2Questions = questions;
       room.quiz.round2Topic     = topic;
       room.quiz.round2QIndex    = 0;
+      room.quiz.answered        = Object.fromEntries(
+        Object.entries(room.quiz.answered).filter(([k]) => !k.startsWith('round2'))
+      );
       room.usedQuestions.push(...questions.map(q => q.question));
       room.state = 'round2';
       io.to(code).emit('round_start', {
@@ -362,7 +446,7 @@ io.on('connection', (socket) => {
       });
       setTimeout(() => {
         room.quiz.round2Timer = Date.now();
-        sendRound2Question(code);
+        sendRound2QuestionToAll(code);
         room.round2Timeout = setTimeout(() => endRound2(code), 60000);
       }, 3500);
     } catch (err) {
