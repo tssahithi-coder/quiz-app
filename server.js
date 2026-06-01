@@ -71,7 +71,7 @@ Return ONLY a JSON array, no markdown, exactly this format:
   }
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-haiku-4-5-20251001',
     max_tokens: 4000,
     messages: [{ role: 'user', content: prompt }],
   });
@@ -289,7 +289,7 @@ io.on('connection', (socket) => {
       });
       setTimeout(() => sendQuestion(code), 4000);
     } catch (err) {
-      console.error('Question generation failed:', err.message);
+      console.error('Question generation failed — full error:', JSON.stringify(err.message), 'Status:', err.status);
       const msg = err.message.includes('401') || err.message.includes('auth') ? 'Invalid API key — check Render environment variables.' : err.message.includes('credit') || err.message.includes('billing') || err.message.includes('quota') ? 'No Anthropic credits — add billing at console.anthropic.com' : err.message.includes('overload') ? 'Anthropic busy — try again in 30 seconds.' : 'Question generation failed: ' + err.message; io.to(code).emit('error', msg);
       room.state = 'lobby';
     }
