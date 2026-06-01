@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>QuizBlitz 🧠</title>
+  <link rel="stylesheet" href="style.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: LOGIN
+═══════════════════════════════════════ -->
+<div id="screen-login" class="screen active">
+  <div class="login-bg"></div>
+  <div class="login-card">
+    <div class="logo">
+      <span class="logo-emoji">🧠</span>
+      <h1>QuizBlitz</h1>
+      <p>AI-Powered Multiplayer Quiz</p>
+    </div>
+    <div class="field-group">
+      <label>Your Name</label>
+      <input id="player-name" type="text" placeholder="Enter your name..." maxlength="20" autocomplete="off"/>
+    </div>
+    <div class="btn-row">
+      <button class="btn-primary" onclick="goToMenu()">Let's Play →</button>
+    </div>
+    <div id="login-error" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: MENU
+═══════════════════════════════════════ -->
+<div id="screen-menu" class="screen">
+  <div class="menu-header">
+    <span class="logo-emoji">🧠</span>
+    <h1>QuizBlitz</h1>
+    <p id="menu-greeting">Hi there!</p>
+  </div>
+  <div class="menu-cards">
+    <div class="menu-card" onclick="showScreen('screen-create')">
+      <div class="menu-icon">🎯</div>
+      <h2>Create Quiz</h2>
+      <p>Set up a new game room and invite friends</p>
+    </div>
+    <div class="menu-card" onclick="showScreen('screen-join')">
+      <div class="menu-icon">🚀</div>
+      <h2>Join Quiz</h2>
+      <p>Enter a room code to join an existing game</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: CREATE
+═══════════════════════════════════════ -->
+<div id="screen-create" class="screen">
+  <div class="screen-header">
+    <button class="btn-back" onclick="showScreen('screen-menu')">← Back</button>
+    <h2>Create Quiz</h2>
+  </div>
+  <div class="form-card">
+    <div class="field-group">
+      <label>Difficulty</label>
+      <div class="diff-btns">
+        <button class="diff-btn active" data-diff="easy">😊 Easy</button>
+        <button class="diff-btn" data-diff="medium">🤔 Medium</button>
+        <button class="diff-btn" data-diff="hard">😤 Hard</button>
+        <button class="diff-btn" data-diff="expert">🔥 Expert</button>
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Game Mode</label>
+      <div class="mode-btns">
+        <button class="mode-btn active" data-mode="individual">👤 Individual</button>
+        <button class="mode-btn" data-mode="teams">👥 Teams</button>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="createRoom()">Create Room 🎯</button>
+    <div id="create-error" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: JOIN
+═══════════════════════════════════════ -->
+<div id="screen-join" class="screen">
+  <div class="screen-header">
+    <button class="btn-back" onclick="showScreen('screen-menu')">← Back</button>
+    <h2>Join Quiz</h2>
+  </div>
+  <div class="form-card">
+    <div class="field-group">
+      <label>Room Code</label>
+      <input id="room-code-input" type="text" placeholder="Enter 6-digit code..."
+             maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:4px;font-size:1.4rem;text-align:center"/>
+    </div>
+    <button class="btn-primary" onclick="joinRoom()">Join Game 🚀</button>
+    <div id="join-error" class="error-msg hidden"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: LOBBY
+═══════════════════════════════════════ -->
+<div id="screen-lobby" class="screen">
+  <div class="screen-header">
+    <h2>Game Lobby</h2>
+    <div class="room-code-display">
+      Code: <span id="lobby-code">------</span>
+      <button class="btn-copy" onclick="copyCode()">📋</button>
+    </div>
+  </div>
+  <div class="lobby-body">
+    <div class="lobby-info">
+      <span id="lobby-difficulty" class="badge">Medium</span>
+      <span id="lobby-mode" class="badge">Individual</span>
+    </div>
+
+    <!-- Teams section (shown only in teams mode) -->
+    <div id="teams-section" class="teams-section hidden">
+      <h3>Pick Your Team</h3>
+      <div class="team-btns">
+        <button class="team-btn" onclick="setTeam('Team Red')" style="background:#e8404a22;border-color:#e8404a">🔴 Team Red</button>
+        <button class="team-btn" onclick="setTeam('Team Blue')" style="background:#4466ff22;border-color:#4466ff">🔵 Team Blue</button>
+        <button class="team-btn" onclick="setTeam('Team Green')" style="background:#44d98e22;border-color:#44d98e">🟢 Team Green</button>
+        <button class="team-btn" onclick="setTeam('Team Yellow')" style="background:#f5c84222;border-color:#f5c842">🟡 Team Yellow</button>
+      </div>
+    </div>
+
+    <div class="players-list" id="players-list"></div>
+
+    <div id="host-controls" class="host-controls hidden">
+      <p class="waiting-hint">Waiting for players... (min 2)</p>
+      <button id="start-btn" class="btn-primary btn-large" onclick="startGame()" disabled>Start Game</button>
+    </div>
+    <div id="guest-waiting" class="guest-waiting hidden">
+      <div class="pulse-dot"></div>
+      <p>Waiting for host to start...</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: LOADING
+═══════════════════════════════════════ -->
+<div id="screen-loading" class="screen">
+  <div class="loading-center">
+    <div class="ai-spinner">
+      <div class="ring r1"></div>
+      <div class="ring r2"></div>
+      <div class="ring r3"></div>
+      <span>🧠</span>
+    </div>
+    <h2 id="loading-text">AI is crafting your questions...</h2>
+    <p class="loading-sub">This takes about 10–15 seconds</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: ROUND INTRO
+═══════════════════════════════════════ -->
+<div id="screen-round-intro" class="screen">
+  <div class="round-intro-inner">
+    <div class="round-badge" id="intro-round-badge">Round 1</div>
+    <h1 id="intro-title">Speed Quiz</h1>
+    <div class="instructions-box" id="intro-instructions"></div>
+    <div class="countdown-bar">
+      <div class="countdown-fill" id="intro-countdown-fill"></div>
+    </div>
+    <p class="countdown-text">Starting in <span id="intro-countdown">4</span>s...</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: QUESTION
+═══════════════════════════════════════ -->
+<div id="screen-question" class="screen">
+  <div class="question-header">
+    <div class="q-meta">
+      <span id="q-round-label" class="badge">Round 1</span>
+      <span id="q-progress">Q 1/5</span>
+    </div>
+    <div id="q-scores-mini" class="scores-mini"></div>
+  </div>
+
+  <div class="question-body">
+    <div class="question-card" id="question-card">
+      <p id="question-text">Question goes here?</p>
+    </div>
+
+    <div class="options-grid" id="options-grid"></div>
+
+    <div id="answer-feedback" class="answer-feedback hidden">
+      <div id="feedback-icon" class="feedback-icon"></div>
+      <div id="feedback-text" class="feedback-text"></div>
+      <div id="feedback-points" class="feedback-points"></div>
+      <div id="feedback-explanation" class="feedback-explanation"></div>
+    </div>
+
+    <!-- Round 2 skip button (host only) -->
+    <div id="r2-controls" class="r2-controls hidden">
+      <div class="r2-timer">
+        <div class="timer-bar-wrap"><div class="timer-bar" id="r2-timer-bar"></div></div>
+        <span id="r2-timer-text">60s</span>
+      </div>
+      <button class="btn-skip" id="skip-btn" onclick="skipQuestion()">⏭ Skip Question</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: QUESTION REVEAL
+═══════════════════════════════════════ -->
+<div id="screen-reveal" class="screen">
+  <div class="reveal-inner">
+    <div id="reveal-result-icon" class="reveal-icon">✅</div>
+    <h2 id="reveal-correct-answer"></h2>
+    <p id="reveal-explanation" class="reveal-explanation"></p>
+    <div id="reveal-first" class="reveal-first"></div>
+    <div class="leaderboard-mini" id="reveal-leaderboard"></div>
+    <p class="next-hint">Next question in 4s...</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: ROUND 1 END / TOPIC SELECT
+═══════════════════════════════════════ -->
+<div id="screen-topic-select" class="screen">
+  <div class="topic-inner">
+    <div class="trophy-anim">🏆</div>
+    <h2 id="round1-winner-msg"></h2>
+    <div id="round1-scores" class="leaderboard-mini"></div>
+
+    <div id="topic-picker" class="topic-picker hidden">
+      <h3>You're the leader! Pick a topic for Round 2:</h3>
+      <div class="topics-grid" id="topics-grid"></div>
+    </div>
+    <div id="topic-waiting" class="topic-waiting hidden">
+      <div class="pulse-dot"></div>
+      <p id="topic-waiting-text">Waiting for the leader to pick a topic...</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     SCREEN: FINAL
+═══════════════════════════════════════ -->
+<div id="screen-final" class="screen">
+  <div class="final-inner">
+    <div class="winner-crown">👑</div>
+    <h1 id="final-winner-name"></h1>
+    <p id="final-winner-score" class="winner-score"></p>
+
+    <div id="final-team-scores" class="team-final-scores hidden"></div>
+
+    <h3>Final Leaderboard</h3>
+    <div id="final-leaderboard" class="leaderboard-full"></div>
+
+    <button class="btn-primary btn-large" onclick="playAgain()">Play Again 🔄</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     TOAST
+═══════════════════════════════════════ -->
+<div id="toast" class="toast hidden"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
